@@ -1,0 +1,9 @@
+flask
+opencv-python
+ultralytics
+
+fastapi
+uvicorn
+ultralytics
+pillow
+python-multipart

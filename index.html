@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animal Detection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(45deg, rgba(72, 98, 168, 0.7), rgba(48, 96, 124, 0.7)), url('https://images.unsplash.com/photo-1561948950-bffb82d3884a') no-repeat center center fixed;
+            background-size: cover;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 3em;
+            color: #fff;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .container {
+            background-color: rgba(255, 255, 255, 0.85); /* White background with transparency */
+            border-radius: 15px;
+            padding: 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+            transform: translateY(-30px); /* Adds a little floating effect */
+        }
+
+        .container input[type="file"] {
+            font-size: 1.2em;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            width: 100%;
+            background-color: #f0f0f0;
+            color: #333;
+        }
+
+        .container button {
+            background-color: #4CAF50;
+            color: white;
+            font-size: 1.2em;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background-color 0.3s ease;
+            width: 100%;
+        }
+
+        .container button:hover {
+            background-color: #45a049;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 1.2em;
+            padding: 20px;
+            background-color: #fff;
+            color: #333;
+            border-radius: 10px;
+            border: 1px solid #ddd;
+            display: inline-block;
+            width: 100%;
+            max-width: 500px;
+            transition: all 0.3s ease-in-out;
+        }
+
+        #result p {
+            margin: 5px 0;
+        }
+
+        #result p.no-animal {
+            color: #f44336;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        #result p.animal-detected {
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        /* Add a subtle animation to the result container */
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+
+        #result {
+            animation: fadeIn 1s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Animal Detection</h1>
+
+        <input type="file" id="image" accept="image/*">
+        <button onclick="uploadImage()">Detect Animals</button>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function uploadImage() {
+            const formData = new FormData();
+            const imageFile = document.getElementById('image').files[0];
+            formData.append("file", imageFile);
+
+            // Send the image to the backend for prediction
+            try {
+                const response = await fetch('http://127.0.0.1:5000/predict/', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                // Handle non-200 status codes (errors)
+                if (!response.ok) {
+                    throw new Error('Failed to get response from backend');
+                }
+
+                const data = await response.json();
+                console.log(data); // Log the response for debugging
+
+                // Check if animals are detected and display the result
+                const resultDiv = document.getElementById('result');
+                if (data.animals_detected && data.animals_detected.length > 0) {
+                    const animalList = data.animals_detected.map(animal => {
+                        return `<p class="animal-detected">Detected: ${animal.type} with ${Math.round(animal.confidence * 100)}% confidence</p>`;
+                    }).join('');
+                    resultDiv.innerHTML = animalList;
+                } else {
+                    resultDiv.innerHTML = '<p class="no-animal">No animals detected.</p>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('result').innerHTML = '<p class="no-animal">Error processing the image.</p>';
+            }
+        }
+    </script>
+
+</body>
+</html>
