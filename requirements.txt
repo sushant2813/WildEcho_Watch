@@ -7,3 +7,4 @@ uvicorn
 ultralytics
 pillow
 python-multipart
+mailjet_rest
