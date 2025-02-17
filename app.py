@@ -84,7 +84,7 @@ async def predict(file: UploadFile = File(...)):
                     "bounding_box": [round(float(coord), 2) for coord in box.xyxy[0]]  # Format bbox
                 })
 
-    # If animals are detected, send an email notification
+    # If animals are detected and the detection is from the allowed classes, send an email notification
     if animal_detections:
         subject = "Animal Intrusion Detected!"
         body = f"Animals detected: {', '.join([d['type'] for d in animal_detections])}. Please take necessary action."
