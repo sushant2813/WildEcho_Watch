@@ -1,99 +1,106 @@
 import os
-import uvicorn
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from ultralytics import YOLO
-from PIL import Image
-import io
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
+from inference_sdk import InferenceHTTPClient
+from dotenv import load_dotenv
 from mailjet_rest import Client
 
-app = FastAPI()
+# Load environment variables
+load_dotenv()
 
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+# Initialize Flask App
+app = Flask(__name__, static_folder="frontend")
+CORS(app)  # Enable CORS for frontend requests
+
+# Initialize Roboflow Client
+client = InferenceHTTPClient(
+    api_url="https://detect.roboflow.com",
+    api_key=os.getenv("ROBOFLOW_API_KEY")
 )
 
-# Load the trained YOLOv8 model
-model = YOLO("yolo11n.pt")
+# Initialize Mailjet Client
+mailjet = Client(auth=(os.getenv("MAILJET_API_KEY"), os.getenv("MAILJET_API_SECRET")), version='v3.1')
 
-# Mailjet API details
-mailjet_api_key = "ed52b0e9c72904b58fb84f035f737cd9"
-mailjet_api_secret = "83f3c1cdaa9640266a8c98da7d0e2666"
-sender_email = "sushantawate2813@gmail.com"
-receiver_email = "sushant.awate21@pccoepune.org"
+# Define allowed animals
+ALLOWED_ANIMALS = {
+    0: "Elephant",
+    1: "Hyena",
+    2: "Leopard",
+    3: "Lion",
+    4: "Wild Boar"
+}
 
-# Function to send an email using Mailjet
-def send_email(subject: str, body: str):
-    mailjet = Client(auth=(mailjet_api_key, mailjet_api_secret), version='v3.1')
-    data = {
-        'Messages': [
-            {
-                "From": {
-                    "Email": sender_email,
-                    "Name": "Animal Intrusion Detection"
-                },
-                "To": [
-                    {
-                        "Email": receiver_email,
-                        "Name": "Receiver"
-                    }
-                ],
-                "Subject": subject,
-                "TextPart": body,
-            }
-        ]
+def send_email(detected_animals):
+    """Send an email notification when an animal is detected."""
+    sender_email = os.getenv("MAILJET_SENDER_EMAIL")
+    receiver_email = os.getenv("MAILJET_RECEIVER_EMAIL")
+    
+    # Prepare email content
+    subject = "Animal Detection Alert!"
+    body = "The following animals have been detected:\n\n"
+    for animal in detected_animals:
+        body += f"🦁 Type: {animal['type']}, Confidence: {animal['confidence']}%\n"
+
+    # Mailjet API request payload
+    email_data = {
+        'Messages': [{
+            "From": {"Email": sender_email, "Name": "Animal Detector"},
+            "To": [{"Email": receiver_email, "Name": "User"}],
+            "Subject": subject,
+            "TextPart": body
+        }]
     }
-    result = mailjet.send.create(data=data)
-    return result
 
-@app.post("/predict/")
-async def predict(file: UploadFile = File(...)):
-    # Open the uploaded file
-    image = Image.open(io.BytesIO(await file.read()))
+    # Send email via Mailjet
+    result = mailjet.send.create(data=email_data)
+    print("Mailjet Response:", result.json())  # Debugging
+    return result.json()
 
-    # Run inference on the image
-    results = model(image)
+@app.route("/")
+def serve_frontend():
+    """Serve the frontend HTML file."""
+    return send_from_directory("frontend", "index.html")
 
-    # Print detected classes and their confidence scores
-    detected_classes = []
-    for result in results:
-        for box in result.boxes:
-            class_name = result.names[int(box.cls)]  # Get class name
-            detected_classes.append(class_name)
+@app.route("/predict", methods=["POST"])
+def predict():
+    """Handles image upload, prediction, and email notification."""
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-    print("Detected classes:", detected_classes)  # Check what classes are detected
+        image = request.files["file"]
+        image_path = "temp.jpg"
+        image.save(image_path)
 
-    # Extract animal detections (set your own allowed classes)
-    animal_detections = []
-    allowed_classes = {"elephant", "wild_boar"}  # Modify this list as needed
-    min_confidence = 0.5  # Confidence threshold to filter low-confidence detections
+        # Call Roboflow API
+        result = client.run_workflow(
+            workspace_name=os.getenv("ROBOFLOW_WORKSPACE"),
+            workflow_id=os.getenv("ROBOFLOW_WORKFLOW"),
+            images={"image": image_path},
+            use_cache=True
+        )
 
-    for result in results:
-        for box in result.boxes:
-            class_name = result.names[int(box.cls)]  # Get class name
-            if class_name in allowed_classes and box.conf >= min_confidence:  # Filter by class and confidence
-                animal_detections.append({
-                    "type": class_name,
-                    "confidence": round(float(box.conf), 4),  # Round for readability
-                    "bounding_box": [round(float(coord), 2) for coord in box.xyxy[0]]  # Format bbox
-                })
+        print("Roboflow Response:", result)  # Debugging
 
-    # If animals are detected and the detection is from the allowed classes, send an email notification
-    if animal_detections:
-        subject = "Animal Intrusion Detected!"
-        body = f"Animals detected: {', '.join([d['type'] for d in animal_detections])}. Please take necessary action."
-        send_email(subject, body)
+        # Extract detected animals
+        predictions = result[0].get("predictions", {}).get("predictions", [])
+        detected_animals = [
+            {"type": d["class"], "confidence": round(d["confidence"] * 100, 2)}
+            for d in predictions if d["class"] in ALLOWED_ANIMALS.values()
+        ]
 
-    # Return only animal detections
-    return JSONResponse(content={"animals_detected": animal_detections})
+        # If animals are detected, send an email
+        if detected_animals:
+            send_email(detected_animals)
 
-# Run the app
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))  # Use port from environment variable or default to 5000
-    uvicorn.run(app, host="0.0.0.0", port=port)  # Start the server
+        response_data = {"animals_detected": detected_animals}
+        print("Formatted Response:", response_data)  # Debugging
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        print("Error:", str(e))  # Log error
+        return jsonify({"error": "Internal Server Error"}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
