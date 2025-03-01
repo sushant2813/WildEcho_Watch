@@ -1,4 +1,6 @@
 import os
+import cv2
+import numpy as np
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from inference_sdk import InferenceHTTPClient
@@ -22,26 +24,18 @@ client = InferenceHTTPClient(
 mailjet = Client(auth=(os.getenv("MAILJET_API_KEY"), os.getenv("MAILJET_API_SECRET")), version='v3.1')
 
 # Define allowed animals
-ALLOWED_ANIMALS = {
-    0: "Elephant",
-    1: "Hyena",
-    2: "Leopard",
-    3: "Lion",
-    4: "Wild Boar"
-}
+ALLOWED_ANIMALS = {"Elephant", "Hyena", "Leopard", "Lion", "Wild Boar"}
 
 def send_email(detected_animals):
-    """Send an email notification when an animal is detected."""
+    """Send an email notification when a high-confidence animal is detected."""
     sender_email = os.getenv("MAILJET_SENDER_EMAIL")
     receiver_email = os.getenv("MAILJET_RECEIVER_EMAIL")
     
-    # Prepare email content
-    subject = "Animal Detection Alert!"
-    body = "The following animals have been detected:\n\n"
+    subject = "🚨 High Confidence Animal Detection Alert!"
+    body = "The following animals were detected with high confidence:\n\n"
     for animal in detected_animals:
         body += f"🦁 Type: {animal['type']}, Confidence: {animal['confidence']}%\n"
 
-    # Mailjet API request payload
     email_data = {
         'Messages': [{
             "From": {"Email": sender_email, "Name": "Animal Detector"},
@@ -51,7 +45,6 @@ def send_email(detected_animals):
         }]
     }
 
-    # Send email via Mailjet
     result = mailjet.send.create(data=email_data)
     print("Mailjet Response:", result.json())  # Debugging
     return result.json()
@@ -82,20 +75,21 @@ def predict():
 
         print("Roboflow Response:", result)  # Debugging
 
-        # Extract detected animals
+        # Extract detected animals with confidence above 90%
         predictions = result[0].get("predictions", {}).get("predictions", [])
         detected_animals = [
             {"type": d["class"], "confidence": round(d["confidence"] * 100, 2)}
-            for d in predictions if d["class"] in ALLOWED_ANIMALS.values()
+            for d in predictions if d["class"] in ALLOWED_ANIMALS and d["confidence"] * 100 >= 95
         ]
 
-        # If animals are detected, send an email
+        # If animals are detected above 90%, send an email
         if detected_animals:
             send_email(detected_animals)
+            response_data = {"animals_detected": detected_animals}
+        else:
+            response_data = {"message": "No animals detected with high confidence."}
 
-        response_data = {"animals_detected": detected_animals}
         print("Formatted Response:", response_data)  # Debugging
-
         return jsonify(response_data)
 
     except Exception as e:
