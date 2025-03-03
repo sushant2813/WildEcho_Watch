@@ -105,7 +105,7 @@ def predict():
         predictions = result[0].get("predictions", {}).get("predictions", [])
         detected_animals = [
             {"type": d["class"], "confidence": round(d["confidence"] * 100, 2)}
-            for d in predictions if d["class"] in ALLOWED_ANIMALS and d["confidence"] * 100 >= 95
+            for d in predictions if d["class"] in ALLOWED_ANIMALS and d["confidence"] * 100 >= 80
         ]
 
         # Log detections to Excel

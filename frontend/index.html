@@ -82,7 +82,7 @@
                 .then(stream => {
                     videoStream = stream;
                     video.srcObject = stream;
-                    setInterval(captureImage, 15000); // Automatically capture image every 3 seconds
+                    setInterval(captureImage, 10000); // Automatically capture image every 3 seconds
                 })
                 .catch(error => console.error("Camera Error:", error));
         }
@@ -109,7 +109,7 @@
             loader.style.display = 'block';
             resultDiv.style.display = 'none';
 
-            fetch('https://wildecho-watch.onrender.com/predict', { 
+            fetch('http://127.0.0.1:5000/predict', { 
                 method: 'POST',
                 body: formData
             })
