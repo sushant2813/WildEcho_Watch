@@ -9,3 +9,5 @@ python-multipart
 mailjet_rest
 flask
 flask_cors
+inference_sdk
+
